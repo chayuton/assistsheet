@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sheet Voice Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Sarabun', sans-serif;
+            background-color: #f0fdf4; /* Green-50 */
+        }
+        .mic-active {
+            animation: pulse 1.5s infinite;
+            background-color: #ef4444 !important; /* Red-500 */
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .chat-bubble {
+            position: relative;
+            background: #ffffff;
+            border-radius: .4em;
+        }
+        .chat-bubble:after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border: 10px solid transparent;
+            border-top-color: #ffffff;
+            border-bottom: 0;
+            margin-left: -10px;
+            margin-bottom: -10px;
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen text-gray-800">
+
+    <!-- Header -->
+    <header class="bg-green-600 text-white p-4 shadow-md sticky top-0 z-10">
+        <div class="container mx-auto flex items-center justify-between">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <i class="fa-solid fa-file-excel"></i> ผู้ช่วยตารางคำนวณ (Sheet Assistant)
+            </h1>
+            <div class="text-sm opacity-80">Voice Command Tool</div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto p-4 flex flex-col items-center justify-center max-w-2xl">
+
+        <!-- Status & Intro -->
+        <div class="text-center mb-6">
+            <div id="status-text" class="text-gray-500 text-sm mb-2">พร้อมรับคำสั่งเสียง...</div>
+            <p class="text-lg font-semibold text-green-800">ถามวิธีใช้สูตร Excel/Google Sheets ได้เลย</p>
+            <p class="text-sm text-gray-600">เช่น "หาวิธีรวมผลลัพธ์", "ใช้ VLOOKUP ยังไง", "หาค่าเฉลี่ย"</p>
+        </div>
+
+        <!-- Microphone Section -->
+        <div class="mb-8 relative group">
+            <button id="mic-btn" class="bg-green-500 hover:bg-green-600 text-white rounded-full w-24 h-24 flex items-center justify-center text-4xl shadow-lg transition-all transform hover:scale-105 focus:outline-none">
+                <i class="fa-solid fa-microphone"></i>
+            </button>
+            <div class="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-gray-500 text-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                กดเพื่อพูด
+            </div>
+        </div>
+
+        <!-- Input Display Area -->
+        <div class="w-full bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4 relative">
+            <label class="block text-xs font-bold text-gray-400 uppercase mb-1">สิ่งที่คุณพูด (หรือพิมพ์)</label>
+            <textarea id="user-input" rows="2" class="w-full text-lg p-2 border-b border-gray-100 focus:outline-none focus:border-green-500 resize-none" placeholder="แตะไมค์แล้วพูด หรือพิมพ์คำถามที่นี่..."></textarea>
+            
+            <div class="flex justify-end mt-2">
+                <button id="send-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-1 rounded-md text-sm transition-colors">
+                    <i class="fa-solid fa-paper-plane mr-1"></i> ส่งคำถาม
+                </button>
+            </div>
+        </div>
+
+        <!-- Response Area -->
+        <div id="response-container" class="w-full bg-green-50 rounded-xl shadow-md border border-green-200 p-6 hidden transition-all">
+            <div class="flex justify-between items-start mb-2">
+                <label class="block text-xs font-bold text-green-600 uppercase">คำตอบ</label>
+                <button id="speak-btn" class="text-green-600 hover:text-green-800 transition-colors" title="อ่านให้ฟังอีกครั้ง">
+                    <i class="fa-solid fa-volume-high text-xl"></i>
+                </button>
+            </div>
+            <div id="response-text" class="text-lg text-gray-800 leading-relaxed">
+                <!-- Answer will appear here -->
+            </div>
+            
+            <!-- Code/Formula Example Box -->
+            <div id="formula-box" class="mt-4 bg-gray-800 text-green-400 font-mono p-3 rounded-md text-sm hidden">
+                <!-- Formula will appear here -->
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-100 p-4 text-center text-gray-500 text-sm">
+        <p>รองรับเบราว์เซอร์ Chrome, Edge และ Safari (ต้องอนุญาตการใช้ไมโครโฟน)</p>
+    </footer>
+
+    <script>
+        // --- 1. Knowledge Base (สมองของบอท) ---
+        // ชุดข้อมูลคำถาม-คำตอบพื้นฐานเกี่ยวกับ Spreadsheet
+        const knowledgeBase = [
+            {
+                keywords: ['รวม', 'บวก', 'sum', 'ซัม', 'ผลรวม'],
+                answer: "ใช้ฟังก์ชัน SUM เพื่อหาผลรวมของตัวเลขครับ",
+                formula: "=SUM(A1:A10)"
+            },
+            {
+                keywords: ['เฉลี่ย', 'average', 'ค่ากลาง'],
+                answer: "ใช้ฟังก์ชัน AVERAGE เพื่อหาค่าเฉลี่ยของช่วงข้อมูลครับ",
+                formula: "=AVERAGE(B1:B20)"
+            },
+            {
+                keywords: ['มากสุด', 'สูงสุด', 'max'],
+                answer: "ใช้ฟังก์ชัน MAX เพื่อหาค่าที่มากที่สุดในกลุ่มข้อมูลครับ",
+                formula: "=MAX(C1:C10)"
+            },
+            {
+                keywords: ['น้อยสุด', 'ต่ำสุด', 'min'],
+                answer: "ใช้ฟังก์ชัน MIN เพื่อหาค่าที่น้อยที่สุดครับ",
+                formula: "=MIN(C1:C10)"
+            },
+            {
+                keywords: ['นับ', 'count', 'จำนวน'],
+                answer: "ใช้ COUNT เพื่อนับเฉพาะตัวเลข หรือ COUNTA เพื่อนับทุกช่องที่มีข้อมูลครับ",
+                formula: "=COUNT(A1:A10) หรือ =COUNTA(A1:A10)"
+            },
+            {
+                keywords: ['ค้นหา', 'vlookup', 'วีลุคอัพ', 'เทียบค่า'],
+                answer: "ใช้ VLOOKUP เพื่อค้นหาข้อมูลจากตารางอื่น โดยระบุค่าที่หา ช่วงตาราง และคอลัมน์คำตอบครับ",
+                formula: "=VLOOKUP(ค่าที่หา, ช่วงข้อมูล, เลขคอลัมน์, FALSE)"
+            },
+            {
+                keywords: ['เงื่อนไข', 'ถ้า', 'if', 'อิฟ'],
+                answer: "ใช้ฟังก์ชัน IF เพื่อตรวจสอบเงื่อนไข ถ้าจริงให้ทำอย่างหนึ่ง ถ้าเท็จให้ทำอีกอย่างครับ",
+                formula: "=IF(คะแนน>=50, \"ผ่าน\", \"ตก\")"
+            },
+            {
+                keywords: ['วันที่', 'date', 'วันนี้', 'today'],
+                answer: "พิมพ์ =TODAY() เพื่อแสดงวันที่ปัจจุบัน หรือ =NOW() เพื่อแสดงวันและเวลาครับ",
+                formula: "=TODAY()"
+            },
+            {
+                keywords: ['ตัวพิมพ์ใหญ่', 'upper'],
+                answer: "ใช้ฟังก์ชัน UPPER เพื่อเปลี่ยนข้อความทั้งหมดเป็นตัวพิมพ์ใหญ่ครับ",
+                formula: "=UPPER(A1)"
+            },
+            {
+                keywords: ['ล็อค', 'ตรึง', 'freeze'],
+                answer: "ไปที่เมนู View (ดู) > Freeze (ตรึง) แล้วเลือกแถวหรือคอลัมน์ที่ต้องการล็อคครับ หรือกด F4 ในสูตรเพื่อใส่ $",
+                formula: "$A$1 (Absolute Reference)"
+            }
+        ];
+
+        // --- 2. Variables & Elements ---
+        const micBtn = document.getElementById('mic-btn');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+        const responseContainer = document.getElementById('response-container');
+        const responseText = document.getElementById('response-text');
+        const formulaBox = document.getElementById('formula-box');
+        const speakBtn = document.getElementById('speak-btn');
+        const statusText = document.getElementById('status-text');
+
+        let recognition;
+        let isListening = false;
+
+        // --- 3. Speech Recognition Setup (STT) ---
+        // ตรวจสอบว่า Browser รองรับหรือไม่
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.lang = 'th-TH'; // ภาษาไทย
+            recognition.interimResults = false; // เอาผลลัพธ์สุดท้ายเลย
+            recognition.maxAlternatives = 1;
+
+            recognition.onstart = () => {
+                isListening = true;
+                micBtn.classList.add('mic-active');
+                statusText.innerText = "กำลังฟังอยู่... พูดได้เลย";
+                userInput.placeholder = "กำลังฟัง...";
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                micBtn.classList.remove('mic-active');
+                statusText.innerText = "กดไมค์เพื่อเริ่มใหม่";
+                userInput.placeholder = "แตะไมค์แล้วพูด หรือพิมพ์คำถามที่นี่...";
+                
+                // Trigger การประมวลผลทันทีเมื่อพูดจบ
+                if (userInput.value.trim() !== "") {
+                    processQuery(userInput.value);
+                }
+            };
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                userInput.value = transcript;
+            };
+
+            recognition.onerror = (event) => {
+                console.error("Speech recognition error", event.error);
+                statusText.innerText = "เกิดข้อผิดพลาด: " + event.error;
+                isListening = false;
+                micBtn.classList.remove('mic-active');
+            };
+        } else {
+            micBtn.style.display = 'none';
+            statusText.innerText = "เบราว์เซอร์นี้ไม่รองรับการสั่งงานด้วยเสียง (ลองใช้ Chrome)";
+            alert("เบราว์เซอร์ของคุณไม่รองรับ Web Speech API กรุณาใช้ Google Chrome");
+        }
+
+        // --- 4. Text-to-Speech Setup (TTS) ---
+        function speak(text) {
+            // ยกเลิกเสียงที่พูดค้างอยู่
+            window.speechSynthesis.cancel();
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'th-TH'; // ภาษาไทย
+            utterance.rate = 1; // ความเร็วปกติ
+            utterance.pitch = 1; // ระดับเสียงปกติ
+
+            // พยายามเลือกเสียงภาษาไทยที่ดีที่สุด
+            const voices = window.speechSynthesis.getVoices();
+            const thaiVoice = voices.find(v => v.lang === 'th-TH');
+            if (thaiVoice) {
+                utterance.voice = thaiVoice;
+            }
+
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // --- 5. Logic Functions ---
+
+        micBtn.addEventListener('click', () => {
+            if (isListening) {
+                recognition.stop();
+            } else {
+                userInput.value = ''; // เคลียร์ข้อความเก่า
+                try {
+                    recognition.start();
+                } catch (e) {
+                    console.error(e);
+                    // บางทีถ้ากดเร็วไปมันอาจจะ error ก็ให้ start ใหม่
+                    recognition.stop();
+                }
+            }
+        });
+
+        sendBtn.addEventListener('click', () => {
+            processQuery(userInput.value);
+        });
+
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault(); // ป้องกันการขึ้นบรรทัดใหม่
+                processQuery(userInput.value);
+            }
+        });
+
+        speakBtn.addEventListener('click', () => {
+            speak(responseText.innerText);
+        });
+
+        // ฟังก์ชันประมวลผลคำถาม
+        function processQuery(query) {
+            if (!query.trim()) return;
+
+            const lowerQuery = query.toLowerCase();
+            let found = null;
+
+            // ค้นหาคีย์เวิร์ดใน knowledgeBase
+            for (const item of knowledgeBase) {
+                if (item.keywords.some(k => lowerQuery.includes(k))) {
+                    found = item;
+                    break;
+                }
+            }
+
+            responseContainer.classList.remove('hidden');
+            
+            if (found) {
+                responseText.innerText = found.answer;
+                
+                if (found.formula) {
+                    formulaBox.innerText = "ตัวอย่างสูตร: " + found.formula;
+                    formulaBox.classList.remove('hidden');
+                } else {
+                    formulaBox.classList.add('hidden');
+                }
+
+                // อ่านคำตอบอัตโนมัติ
+                speak(found.answer);
+
+            } else {
+                const fallbackText = "ขออภัยครับ ผมยังไม่เข้าใจคำถามนี้ ลองถามเกี่ยวกับสูตรพื้นฐาน เช่น SUM, Average, หรือ VLOOKUP ดูนะครับ";
+                responseText.innerText = fallbackText;
+                formulaBox.classList.add('hidden');
+                speak(fallbackText);
+            }
+        }
+
+        // โหลดรายการเสียงเมื่อเปิดเว็บ (แก้ปัญหารายการเสียงไม่โหลดในบาง Browser)
+        window.speechSynthesis.onvoiceschanged = () => {
+            window.speechSynthesis.getVoices();
+        };
+
+    </script>
+</body>
+</html>
